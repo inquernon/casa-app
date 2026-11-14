@@ -45,6 +45,6 @@ La lógica de negocio vive en funciones de Postgres para que otros clientes (Cla
 
 ## Fases
 1. (Hecha) Inicio de sesión, hogar compartido, artículos, lista dinámica, mercados, historial, análisis.
-2. Despensa: stock por movimientos, conteo inicial, consumo manual, stock mínimo.
+2. (Hecha) Despensa: stock por movimientos, conteo, consumo manual, stock mínimo. No requiere SQL nuevo.
 3. Recetas, ciclo de menú de 14 días, pantalla **Hoy** con "Preparé".
 4. Reporte para Claude y conexión por MCP.

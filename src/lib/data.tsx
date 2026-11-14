@@ -1,7 +1,7 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "./supabase";
 import { useTable } from "./useTable";
-import type { Household, Item, Member, Purchase, Trip } from "./types";
+import type { Household, Item, Member, Movement, Purchase, Trip } from "./types";
 
 interface Data {
   userId: string;
@@ -10,6 +10,9 @@ interface Data {
   items: Item[];
   purchases: Purchase[];
   trips: Trip[];
+  movements: Movement[];
+  /** Cantidad en despensa por artículo (suma de movimientos) */
+  stock: Map<string, number>;
   loading: boolean;
   error: string | null;
   reloadHousehold: () => Promise<void>;
@@ -30,6 +33,12 @@ export function DataProvider({ userId, household: initial, children }: { userId:
   const items = useTable<Item>("items", initial.id, { column: "sort" });
   const purchases = useTable<Purchase>("purchases", initial.id, { column: "created_at" });
   const trips = useTable<Trip>("shopping_trips", initial.id, { column: "trip_date", ascending: false });
+  const movements = useTable<Movement>("stock_movements", initial.id, { column: "created_at" });
+  const stock = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const mv of movements.rows) m.set(mv.item_id, (m.get(mv.item_id) ?? 0) + Number(mv.delta));
+    return m;
+  }, [movements.rows]);
 
   const reloadHousehold = useCallback(async () => {
     const [{ data: h }, { data: m }] = await Promise.all([
@@ -63,8 +72,10 @@ export function DataProvider({ userId, household: initial, children }: { userId:
     items: items.rows,
     purchases: purchases.rows,
     trips: trips.rows,
+    movements: movements.rows,
+    stock,
     loading: items.loading || purchases.loading || trips.loading,
-    error: items.error || purchases.error || trips.error,
+    error: items.error || purchases.error || trips.error || movements.error,
     reloadHousehold,
     memberName,
   };

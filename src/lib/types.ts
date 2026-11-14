@@ -61,3 +61,15 @@ export interface Trip {
   created_by: string | null;
   created_at: string;
 }
+
+export interface Movement {
+  id: string;
+  household_id: string;
+  item_id: string;
+  delta: number;
+  reason: "compra" | "preparacion" | "consumo" | "ajuste";
+  ref_id: string | null;
+  note: string;
+  created_by: string | null;
+  created_at: string;
+}

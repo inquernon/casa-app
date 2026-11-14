@@ -64,8 +64,24 @@ export function unitPrice(price: number, qty: number, unit: Unit): { value: numb
 
 export const unitLabel = (u: Unit) => (u === "g" ? "gramos" : u === "ml" ? "mililitros" : "unidades");
 
+/** Valor en pesos: acepta "12500", "12.500" o "$ 12.500". */
+export function parseMoney(s: string): number {
+  const digits = s.replace(/[^\d]/g, "");
+  return digits ? Number(digits) : NaN;
+}
+
+/** Cantidad: acepta "1000", "1.000" (mil), "1,5" y "1.5". */
+export function parseQty(s: string): number {
+  let t = s.trim().replace(/\s/g, "");
+  if (!t) return NaN;
+  if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, "");
+  const n = Number(t.replace(",", "."));
+  return Number.isFinite(n) ? n : NaN;
+}
+
 export function errorText(e: unknown): string {
   const msg = (e as { message?: string })?.message ?? String(e);
+  if (/duplicate key/i.test(msg)) return "Ese artículo ya está marcado en este mercado.";
   if (/JWT|session/i.test(msg)) return "Tu sesión expiró. Vuelve a iniciar sesión.";
   if (/Failed to fetch|NetworkError/i.test(msg)) return "Sin conexión. Revisa el internet y vuelve a intentar.";
   return msg;

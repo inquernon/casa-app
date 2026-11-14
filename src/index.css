@@ -79,7 +79,7 @@ input, select { font: inherit; color: var(--ink); background: var(--bg); border:
 .item .price b { display: block; font-size: 1rem; }
 
 /* Tabs */
-nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, 1fr); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
+nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
 nav.tabs button { border: none; border-radius: 0; background: none; color: var(--muted); font-weight: 700; font-size: .85rem; min-height: 56px; }
 nav.tabs button[aria-current="page"] { color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
 
@@ -140,3 +140,13 @@ label.check input { width: auto; min-height: 0; }
 .trip { border-top: 1px solid var(--line); padding-top: 10px; }
 button:disabled { opacity: .6; cursor: default; }
 .banner { cursor: pointer; }
+
+/* Interruptor como botón (más fiable en pantallas táctiles) */
+button.switch { width: 48px; height: 44px; min-height: 0; padding: 0; border: 0; background: none; border-radius: 99px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+button.switch .track { inset: 8px 0; pointer-events: none; }
+.switch.on .track { background: var(--accent); }
+.switch.on .track::after { transform: translateX(20px); }
+button, .lrow .info { touch-action: manipulation; }
+nav.tabs button { font-size: .76rem; padding: 0 2px; }
+.pill.bad { background: var(--warn-soft); color: var(--bad); }
+.sheet .banner { cursor: default; }

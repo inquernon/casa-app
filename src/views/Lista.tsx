@@ -2,13 +2,13 @@ import { useMemo, useState } from "react";
 import { useData } from "../lib/data";
 import { supabase } from "../lib/supabase";
 import { GROUPS, type Item, type Purchase, type Unit } from "../lib/types";
-import { errorText, fmtDate, fmtQty, money, periodStart, periods, todayCO, unitLabel } from "../lib/util";
+import { errorText, fmtDate, fmtQty, money, parseMoney, parseQty, periodStart, periods, todayCO, unitLabel } from "../lib/util";
 import { PlacesDatalist, Sheet, Switch } from "../components/Sheet";
 
 type BuyTarget = { item: Pick<Item, "id" | "name" | "grp" | "unit" | "buy_qty" | "place"> | null; extraName?: string; extraGrp?: string; extraUnit?: Unit; existing?: Purchase };
 
 export function Lista({ onError }: { onError: (msg: string | null) => void }) {
-  const { household, items, purchases } = useData();
+  const { household, items, purchases, stock } = useData();
   const [buy, setBuy] = useState<BuyTarget | null>(null);
   const [extraOpen, setExtraOpen] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
@@ -33,8 +33,13 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
     const last = lastBought.get(i.id);
     return last && last.purchased_on >= periodStart(i.cadence, p) ? last : null;
   };
-  const toBuy = active.filter((i) => pendingByItem.has(i.id) || !boughtInPeriod(i));
-  const already = active.filter((i) => !pendingByItem.has(i.id) && boughtInPeriod(i));
+  // Comprado en el periodo pero ya se acabó en la despensa: vuelve a la lista.
+  const ranOut = (i: Item) => {
+    const last = boughtInPeriod(i);
+    return !!last && Number(last.qty) > 0 && (stock.get(i.id) ?? 0) <= Number(i.min_stock);
+  };
+  const toBuy = active.filter((i) => pendingByItem.has(i.id) || !boughtInPeriod(i) || ranOut(i));
+  const already = active.filter((i) => !pendingByItem.has(i.id) && boughtInPeriod(i) && !ranOut(i));
   const extras = pending.filter((x) => !x.item_id);
 
   const budget = Number(household.budget_quincena) || 0;
@@ -122,7 +127,7 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
         return (
           <div className="card tight" key={g}>
             <h3>{g}</h3>
-            {rows.map((i) => row(i))}
+            {rows.map((i) => row(i, !pendingByItem.has(i.id) && ranOut(i) ? "se acabó en la despensa" : undefined))}
             {ex.map((x) => (
               <div className="lrow done" key={x.id}>
                 <Switch checked label={`Comprado: ${x.name}`} onChange={(on) => !on && unmark(x)} />
@@ -167,7 +172,7 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
         </div>
       )}
 
-      {buy && <BuySheet target={buy} lastPlace={lastPlace} onClose={() => setBuy(null)} onError={onError} />}
+      {buy && <BuySheet target={buy} lastPlace={lastPlace} onClose={() => setBuy(null)} />}
       {extraOpen && (
         <ExtraSheet
           onClose={() => setExtraOpen(false)}
@@ -196,7 +201,7 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
   );
 }
 
-function BuySheet({ target, lastPlace, onClose, onError }: { target: BuyTarget; lastPlace: string; onClose: () => void; onError: (m: string | null) => void }) {
+function BuySheet({ target, lastPlace, onClose }: { target: BuyTarget; lastPlace: string; onClose: () => void }) {
   const { household } = useData();
   const { item, existing } = target;
   const name = item?.name ?? target.extraName ?? "";
@@ -205,13 +210,18 @@ function BuySheet({ target, lastPlace, onClose, onError }: { target: BuyTarget; 
   const [place, setPlace] = useState(existing?.place ?? (lastPlace || item?.place || ""));
   const [qty, setQty] = useState(String(existing?.qty ?? item?.buy_qty ?? ""));
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const priceN = Number(price);
-    if (!(priceN >= 0) || !place.trim()) return;
+    const priceN = parseMoney(price);
+    const qtyN = qty.trim() ? parseQty(qty) : 0;
+    if (!Number.isFinite(priceN)) return setErr("Escribe el valor pagado, solo números.");
+    if (!place.trim()) return setErr("Escribe el lugar donde lo compraste.");
+    if (!Number.isFinite(qtyN) || qtyN < 0) return setErr("La cantidad debe ser un número.");
     setBusy(true);
-    const row = { price: priceN, place: place.trim(), qty: Number(qty) || 0, unit };
+    setErr(null);
+    const row = { price: priceN, place: place.trim(), qty: qtyN, unit };
     const { error } = existing
       ? await supabase.from("purchases").update(row).eq("id", existing.id)
       : await supabase.from("purchases").insert({
@@ -222,28 +232,29 @@ function BuySheet({ target, lastPlace, onClose, onError }: { target: BuyTarget; 
           grp: item?.grp ?? target.extraGrp ?? "Otro",
         });
     setBusy(false);
-    onError(error ? errorText(error) : null);
-    if (!error) onClose();
+    if (error) return setErr(errorText(error));
+    onClose();
   }
 
   return (
     <Sheet title={name} onClose={onClose}>
-      <form className="form" onSubmit={submit}>
+      <form className="form" onSubmit={submit} noValidate>
         <label>
           Valor pagado (COP)
-          <input type="number" inputMode="numeric" min={0} step={50} required value={price} onChange={(e) => setPrice(e.target.value)} />
+          <input type="text" inputMode="numeric" autoComplete="off" placeholder="12500" value={price} onChange={(e) => setPrice(e.target.value)} />
         </label>
         <label>
           Lugar
-          <input list="places" required value={place} onChange={(e) => setPlace(e.target.value)} />
+          <input list="places" autoComplete="off" value={place} onChange={(e) => setPlace(e.target.value)} />
         </label>
         <label>
           Cantidad comprada ({unitLabel(unit)})
-          <input type="number" inputMode="decimal" min={0} step="any" value={qty} onChange={(e) => setQty(e.target.value)} />
+          <input type="text" inputMode="decimal" autoComplete="off" value={qty} onChange={(e) => setQty(e.target.value)} />
         </label>
         <p className="muted small">Fecha: {fmtDate(existing?.purchased_on ?? todayCO())} (se guarda sola)</p>
+        {err && <p className="banner" role="alert">{err}</p>}
         <div className="row">
-          <button type="submit" className="primary" disabled={busy}>{existing ? "Guardar cambios" : "Marcar comprado"}</button>
+          <button type="submit" className="primary" disabled={busy}>{busy ? "Guardando…" : existing ? "Guardar cambios" : "Marcar comprado"}</button>
           <button type="button" onClick={onClose}>Cancelar</button>
         </div>
       </form>

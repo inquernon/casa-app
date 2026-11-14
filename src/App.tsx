@@ -5,12 +5,14 @@ import { DataProvider, useData } from "./lib/data";
 import type { Household } from "./lib/types";
 import { Login, Onboarding } from "./views/Auth";
 import { Lista } from "./views/Lista";
+import { Despensa } from "./views/Despensa";
 import { Historial } from "./views/Historial";
 import { Analisis } from "./views/Analisis";
 import { Articulos } from "./views/Articulos";
 
 const TABS = [
   { id: "lista", label: "Lista" },
+  { id: "despensa", label: "Despensa" },
   { id: "historial", label: "Historial" },
   { id: "analisis", label: "Análisis" },
   { id: "articulos", label: "Artículos" },
@@ -83,6 +85,7 @@ function Shell() {
           <div className="banner" role="alert" onClick={() => setMsg(null)}>{msg || error}</div>
         )}
         {tab === "lista" && <Lista onError={setMsg} />}
+        {tab === "despensa" && <Despensa />}
         {tab === "historial" && <Historial />}
         {tab === "analisis" && <Analisis />}
         {tab === "articulos" && <Articulos onError={setMsg} />}

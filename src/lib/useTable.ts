@@ -36,10 +36,10 @@ export function useTable<T>(table: string, householdId: string, order?: { column
         load();
       })
       .subscribe();
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
+    const onVisible = () => document.visibilityState === "visible" && load();
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
-      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
       supabase.removeChannel(channel);
     };
   }, [load, table, householdId]);
