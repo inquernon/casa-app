@@ -8,7 +8,7 @@ import { PlacesDatalist, Sheet, Switch } from "../components/Sheet";
 type BuyTarget = { item: Pick<Item, "id" | "name" | "grp" | "unit" | "buy_qty" | "place"> | null; extraName?: string; extraGrp?: string; extraUnit?: Unit; existing?: Purchase };
 
 export function Lista({ onError }: { onError: (msg: string | null) => void }) {
-  const { household, items, purchases, stock } = useData();
+  const { household, items, purchases, stock, refresh } = useData();
   const [buy, setBuy] = useState<BuyTarget | null>(null);
   const [extraOpen, setExtraOpen] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
@@ -52,6 +52,7 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
   async function unmark(purchase: Purchase) {
     const { error } = await supabase.from("purchases").delete().eq("id", purchase.id);
     onError(error ? errorText(error) : null);
+    await refresh();
   }
 
   async function saveTrip() {
@@ -60,6 +61,7 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
     setSaving(false);
     setConfirmSave(false);
     onError(error ? errorText(error) : null);
+    await refresh();
   }
 
   const row = (i: Item, note?: string) => {
@@ -202,7 +204,7 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
 }
 
 function BuySheet({ target, lastPlace, onClose }: { target: BuyTarget; lastPlace: string; onClose: () => void }) {
-  const { household } = useData();
+  const { household, refresh } = useData();
   const { item, existing } = target;
   const name = item?.name ?? target.extraName ?? "";
   const unit: Unit = existing?.unit ?? item?.unit ?? target.extraUnit ?? "unidad";
@@ -233,6 +235,7 @@ function BuySheet({ target, lastPlace, onClose }: { target: BuyTarget; lastPlace
         });
     setBusy(false);
     if (error) return setErr(errorText(error));
+    await refresh();
     onClose();
   }
 
@@ -264,7 +267,7 @@ function BuySheet({ target, lastPlace, onClose }: { target: BuyTarget; lastPlace
 }
 
 function ExtraSheet({ onClose, onNext, onError }: { onClose: () => void; onNext: (t: BuyTarget) => void; onError: (m: string | null) => void }) {
-  const { household } = useData();
+  const { household, refresh } = useData();
   const [name, setName] = useState("");
   const [grp, setGrp] = useState("Despensa");
   const [unit, setUnit] = useState<Unit>("unidad");
@@ -280,6 +283,7 @@ function ExtraSheet({ onClose, onNext, onError }: { onClose: () => void; onNext:
         .select()
         .single();
       if (error) return onError(errorText(error));
+      await refresh();
       onNext({ item: data as Item });
     } else {
       onNext({ item: null, extraName: name.trim(), extraGrp: grp, extraUnit: unit });

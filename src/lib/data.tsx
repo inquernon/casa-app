@@ -16,6 +16,8 @@ interface Data {
   loading: boolean;
   error: string | null;
   reloadHousehold: () => Promise<void>;
+  /** Vuelve a leer todo. Se llama después de cada cambio, sin depender del tiempo real. */
+  refresh: () => Promise<void>;
   memberName: (userId: string | null) => string;
 }
 
@@ -60,6 +62,11 @@ export function DataProvider({ userId, household: initial, children }: { userId:
     };
   }, [initial.id, reloadHousehold]);
 
+  const reloadItems = items.reload, reloadPurchases = purchases.reload, reloadTrips = trips.reload, reloadMovements = movements.reload;
+  const refresh = useCallback(async () => {
+    await Promise.all([reloadItems(), reloadPurchases(), reloadTrips(), reloadMovements(), reloadHousehold()]);
+  }, [reloadItems, reloadPurchases, reloadTrips, reloadMovements, reloadHousehold]);
+
   const memberName = useCallback(
     (uid: string | null) => members.find((m) => m.user_id === uid)?.display_name ?? "",
     [members],
@@ -77,6 +84,7 @@ export function DataProvider({ userId, household: initial, children }: { userId:
     loading: items.loading || purchases.loading || trips.loading,
     error: items.error || purchases.error || trips.error || movements.error,
     reloadHousehold,
+    refresh,
     memberName,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -24,8 +24,12 @@ export default function App() {
   const [household, setHousehold] = useState<Household | null | undefined>(undefined);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    const apply = (s: Session | null) => {
+      if (s) supabase.realtime.setAuth(s.access_token);
+      setSession(s);
+    };
+    supabase.auth.getSession().then(({ data }) => apply(data.session));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) => apply(s));
     return () => data.subscription.unsubscribe();
   }, []);
 

@@ -100,7 +100,7 @@ export function Despensa() {
 }
 
 function MoveSheet({ item, mode, current, onClose }: { item: Item; mode: Mode; current: number; onClose: () => void }) {
-  const { household } = useData();
+  const { household, refresh } = useData();
   const [val, setVal] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -117,6 +117,7 @@ function MoveSheet({ item, mode, current, onClose }: { item: Item; mode: Mode; c
     const { error } = await supabase.from("stock_movements").insert({ household_id: household.id, item_id: item.id, delta, reason: mode, note: note.trim() });
     setBusy(false);
     if (error) return setErr(errorText(error));
+    await refresh();
     onClose();
   }
 

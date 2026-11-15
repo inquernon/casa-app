@@ -6,7 +6,7 @@ import { errorText, fmtQty } from "../lib/util";
 import { PlacesDatalist, Sheet } from "../components/Sheet";
 
 export function Articulos({ onError }: { onError: (m: string | null) => void }) {
-  const { household, items, members, userId } = useData();
+  const { household, items, members, userId, refresh } = useData();
   const [editing, setEditing] = useState<Partial<Item> | null>(null);
   const me = members.find((m) => m.user_id === userId);
   const list = [...items].sort(
@@ -16,10 +16,12 @@ export function Articulos({ onError }: { onError: (m: string | null) => void }) 
   async function updateHousehold(patch: Record<string, unknown>) {
     const { error } = await supabase.from("households").update(patch).eq("id", household.id);
     onError(error ? errorText(error) : null);
+    await refresh();
   }
   async function toggle(i: Item) {
     const { error } = await supabase.from("items").update({ active: !i.active }).eq("id", i.id);
     onError(error ? errorText(error) : null);
+    await refresh();
   }
 
   return (
@@ -57,6 +59,7 @@ export function Articulos({ onError }: { onError: (m: string | null) => void }) 
               const { error } = await supabase.from("household_members").update({ display_name: v })
                 .eq("household_id", household.id).eq("user_id", userId);
               onError(error ? errorText(error) : null);
+    await refresh();
             }} />
           </label>
         )}
@@ -92,7 +95,7 @@ export function Articulos({ onError }: { onError: (m: string | null) => void }) 
 }
 
 function ItemSheet({ item, onClose, onError }: { item: Partial<Item>; onClose: () => void; onError: (m: string | null) => void }) {
-  const { household } = useData();
+  const { household, refresh } = useData();
   const [f, setF] = useState({
     name: item.name ?? "",
     grp: item.grp ?? "Despensa",
@@ -114,6 +117,7 @@ function ItemSheet({ item, onClose, onError }: { item: Partial<Item>; onClose: (
       ? await supabase.from("items").update(row).eq("id", item.id)
       : await supabase.from("items").insert({ ...row, household_id: household.id });
     onError(error ? errorText(error) : null);
+    await refresh();
     if (!error) onClose();
   }
 
