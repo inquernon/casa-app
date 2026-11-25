@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useData } from "../lib/data";
+import { useData } from "../lib/store";
 import { supabase } from "../lib/supabase";
-import { GROUPS, type Cadence, type Item, type Unit } from "../lib/types";
+import { GROUPS, groupIndex, type Cadence, type Item, type Unit } from "../lib/types";
 import { errorText, fmtQty } from "../lib/util";
 import { PlacesDatalist, Sheet } from "../components/Sheet";
 
@@ -9,9 +9,7 @@ export function Articulos({ onError }: { onError: (m: string | null) => void }) 
   const { household, items, members, userId, refresh } = useData();
   const [editing, setEditing] = useState<Partial<Item> | null>(null);
   const me = members.find((m) => m.user_id === userId);
-  const list = [...items].sort(
-    (a, b) => GROUPS.indexOf(a.grp as (typeof GROUPS)[number]) - GROUPS.indexOf(b.grp as (typeof GROUPS)[number]) || a.sort - b.sort,
-  );
+  const list = [...items].sort((a, b) => groupIndex(a.grp) - groupIndex(b.grp) || a.sort - b.sort);
 
   async function updateHousehold(patch: Record<string, unknown>) {
     const { error } = await supabase.from("households").update(patch).eq("id", household.id);

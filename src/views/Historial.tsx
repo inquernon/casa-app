@@ -1,5 +1,5 @@
-import { useData } from "../lib/data";
-import { GROUPS } from "../lib/types";
+import { useData } from "../lib/store";
+import { groupIndex } from "../lib/types";
 import { fmtDate, fmtQty, money } from "../lib/util";
 
 export function Historial() {
@@ -18,7 +18,7 @@ export function Historial() {
       {trips.map((t) => {
         const ps = purchases
           .filter((x) => x.trip_id === t.id)
-          .sort((a, b) => GROUPS.indexOf(a.grp as (typeof GROUPS)[number]) - GROUPS.indexOf(b.grp as (typeof GROUPS)[number]));
+          .sort((a, b) => groupIndex(a.grp) - groupIndex(b.grp));
         const who = memberName(t.created_by);
         return (
           <details key={t.id} className="trip">

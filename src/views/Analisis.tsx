@@ -1,4 +1,4 @@
-import { useData } from "../lib/data";
+import { useData } from "../lib/store";
 import { fmtDate, money, monthLabel, todayCO, unitPrice } from "../lib/util";
 import type { Purchase } from "../lib/types";
 

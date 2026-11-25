@@ -1,13 +1,12 @@
 import { useState } from "react";
-import { useData } from "../lib/data";
+import { useData } from "../lib/store";
 import { supabase } from "../lib/supabase";
 import { GROUPS, type Item } from "../lib/types";
-import { errorText, fmtQty, parseQty, unitLabel } from "../lib/util";
+import { errorText, fmtDay, fmtQty, parseQty, unitLabel } from "../lib/util";
 import { Sheet } from "../components/Sheet";
 
 type Mode = "consumo" | "ajuste";
 const REASON: Record<string, string> = { compra: "Compra", preparacion: "Preparación", consumo: "Consumo", ajuste: "Conteo" };
-const day = (ts: string) => new Date(ts).toLocaleDateString("es-CO", { day: "numeric", month: "short", timeZone: "America/Bogota" });
 
 export function Despensa() {
   const { items, stock, movements, memberName } = useData();
@@ -81,7 +80,7 @@ export function Despensa() {
                   const who = memberName(m.created_by);
                   return (
                     <tr key={m.id}>
-                      <td className="num">{day(m.created_at)}</td>
+                      <td className="num">{fmtDay(m.created_at)}</td>
                       <td>{it?.name ?? "—"}{m.note ? <><br /><span className="muted small">{m.note}</span></> : null}</td>
                       <td>{REASON[m.reason] ?? m.reason}{who ? <><br /><span className="muted small">{who}</span></> : null}</td>
                       <td className="r num">{Number(m.delta) > 0 ? "+" : "−"}{fmtQty(Math.abs(Number(m.delta)), it?.unit ?? "unidad")}</td>

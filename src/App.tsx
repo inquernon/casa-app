@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { configError, supabase } from "./lib/supabase";
-import { DataProvider, useData } from "./lib/data";
+import { DataProvider } from "./lib/data";
+import { useData } from "./lib/store";
 import type { Household } from "./lib/types";
 import { Login, Onboarding } from "./views/Auth";
 import { Lista } from "./views/Lista";

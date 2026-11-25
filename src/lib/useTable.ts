@@ -4,7 +4,7 @@ import { supabase } from "./supabase";
 const PAGE = 1000;
 
 /** Lee todas las filas del hogar en una tabla y las mantiene al día con Supabase Realtime. */
-export function useTable<T>(table: string, householdId: string, order?: { column: string; ascending?: boolean }) {
+export function useTable<T>(table: string, householdId: string, orderColumn: string, ascending = true) {
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -12,9 +12,12 @@ export function useTable<T>(table: string, householdId: string, order?: { column
   const load = useCallback(async () => {
     const all: T[] = [];
     for (let from = 0; ; from += PAGE) {
-      let q = supabase.from(table).select("*").eq("household_id", householdId).range(from, from + PAGE - 1);
-      if (order) q = q.order(order.column, { ascending: order.ascending ?? true });
-      const { data, error: err } = await q;
+      const { data, error: err } = await supabase
+        .from(table)
+        .select("*")
+        .eq("household_id", householdId)
+        .order(orderColumn, { ascending })
+        .range(from, from + PAGE - 1);
       if (err) {
         setError(err.message);
         setLoading(false);
@@ -26,7 +29,7 @@ export function useTable<T>(table: string, householdId: string, order?: { column
     setRows(all);
     setError(null);
     setLoading(false);
-  }, [table, householdId, order?.column, order?.ascending]);
+  }, [table, householdId, orderColumn, ascending]);
 
   useEffect(() => {
     load();

@@ -1,0 +1,101 @@
+-- Pruebas de regresión de la base de datos. Corren después de stubs.sql y de las migraciones.
+-- Cada prueba que falla lanza una excepción y detiene el script (psql -v ON_ERROR_STOP=1).
+\set ON_ERROR_STOP 1
+grant usage on schema public, auth to authenticated;
+grant all on all tables in schema public to authenticated;
+grant execute on all functions in schema auth to authenticated;
+insert into auth.users values
+  ('11111111-1111-1111-1111-111111111111'), ('22222222-2222-2222-2222-222222222222'), ('33333333-3333-3333-3333-333333333333');
+
+create or replace function pg_temp.check(ok boolean, what text) returns void language plpgsql as $$
+begin
+  if ok is not true then raise exception 'FALLA: %', what; end if;
+  raise notice 'ok: %', what;
+end $$;
+
+set role authenticated;
+
+-- 1. Crear la casa carga el catálogo inicial
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+select create_household('Casa', 'Alex') as hh \gset
+select pg_temp.check((select count(*) from items) = 43, 'crear casa carga 43 artículos');
+select pg_temp.check((select budget_quincena from households) = 425000, 'presupuesto por defecto 425.000');
+select invite_code from households \gset
+select set_config('test.hh', :'hh', false);
+
+-- 2. Unirse con el código
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select pg_temp.check(join_household(:'invite_code', 'Mariana') = :'hh', 'Mariana se une con el código');
+select pg_temp.check((select count(*) from household_members) = 2, 'la casa tiene 2 miembros');
+do $$ begin
+  perform join_household('codigo-malo', 'X');
+  raise exception 'FALLA: aceptó un código inválido';
+exception when others then
+  if sqlerrm like 'FALLA%' then raise; end if;
+  raise notice 'ok: rechaza código inválido';
+end $$;
+
+-- 3. Un artículo solo se marca una vez por mercado abierto
+insert into purchases (household_id, item_id, name, grp, qty, unit, price, place)
+  select household_id, id, name, grp, 30, unit, 9000, 'D1' from items where name = 'Huevos';
+do $$ begin
+  insert into purchases (household_id, item_id, name, grp, qty, unit, price, place)
+    select household_id, id, name, grp, 30, unit, 9000, 'D1' from items where name = 'Huevos';
+  raise exception 'FALLA: permitió marcar dos veces el mismo artículo';
+exception when unique_violation then raise notice 'ok: no permite marcar dos veces';
+end $$;
+
+-- 4. Guardar mercado: crea el mercado, asigna las compras y suma a la despensa
+insert into purchases (household_id, item_id, name, grp, qty, unit, price, place)
+  select household_id, id, name, grp, 2500, unit, 11500, 'D1' from items where name = 'Arroz';
+insert into purchases (household_id, item_id, name, grp, qty, unit, price, place)
+  values (:'hh', null, 'Detergente', 'Aseo', 1, 'unidad', 15000, 'Supermu');
+select save_trip(:'hh') as trip \gset
+select pg_temp.check((select total from shopping_trips where id = :'trip') = 35500, 'total del mercado 35.500');
+select pg_temp.check((select item_count from shopping_trips where id = :'trip') = 3, 'el mercado tiene 3 artículos');
+select pg_temp.check((select places from shopping_trips where id = :'trip') @> array['D1', 'Supermu'], 'el mercado guarda los lugares');
+select pg_temp.check(not exists (select 1 from purchases where trip_id is null), 'no quedan compras sin guardar');
+select pg_temp.check((select s.qty from stock s join items i on i.id = s.item_id where i.name = 'Huevos') = 30, 'despensa: 30 huevos');
+select pg_temp.check((select s.qty from stock s join items i on i.id = s.item_id where i.name = 'Arroz') = 2500, 'despensa: 2500 g de arroz');
+select pg_temp.check((select count(*) from stock_movements) = 2, 'el extra no crea movimiento de despensa');
+
+-- 5. Guardar sin compras marcadas falla
+do $$ begin
+  perform save_trip((select id from households limit 1));
+  raise exception 'FALLA: guardó un mercado vacío';
+exception when others then
+  if sqlerrm like 'FALLA%' then raise; end if;
+  raise notice 'ok: no guarda mercado vacío';
+end $$;
+
+-- 6. Consumo y conteo actualizan la despensa
+insert into stock_movements (household_id, item_id, delta, reason)
+  select household_id, id, -6, 'consumo' from items where name = 'Huevos';
+insert into stock_movements (household_id, item_id, delta, reason)
+  select household_id, id, 2000 - 2500, 'ajuste' from items where name = 'Arroz';
+select pg_temp.check((select s.qty from stock s join items i on i.id = s.item_id where i.name = 'Huevos') = 24, 'consumo: quedan 24 huevos');
+select pg_temp.check((select s.qty from stock s join items i on i.id = s.item_id where i.name = 'Arroz') = 2000, 'conteo: quedan 2000 g de arroz');
+
+-- 7. Aislamiento: alguien de otra casa no ve ni escribe nada
+set request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
+select pg_temp.check((select count(*) from items) = 0, 'otra persona no ve artículos');
+select pg_temp.check((select count(*) from purchases) = 0, 'otra persona no ve compras');
+select pg_temp.check((select count(*) from stock) = 0, 'otra persona no ve la despensa');
+select pg_temp.check((select count(*) from households) = 0, 'otra persona no ve la casa');
+do $$ begin
+  insert into items (household_id, name) values (current_setting('test.hh')::uuid, 'intruso');
+  raise exception 'FALLA: otra persona pudo escribir';
+exception when others then
+  if sqlerrm like 'FALLA%' then raise; end if;
+  raise notice 'ok: otra persona no puede escribir';
+end $$;
+do $$ begin
+  perform save_trip(current_setting('test.hh')::uuid);
+  raise exception 'FALLA: save_trip sin acceso';
+exception when others then
+  if sqlerrm like 'FALLA%' then raise; end if;
+  raise notice 'ok: save_trip exige ser miembro';
+end $$;
+
+reset role;
+\echo 'TODAS LAS PRUEBAS DE BASE DE DATOS PASARON'

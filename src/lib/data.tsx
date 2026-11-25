@@ -1,41 +1,16 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { supabase } from "./supabase";
 import { useTable } from "./useTable";
+import { DataContext, type Data } from "./store";
 import type { Household, Item, Member, Movement, Purchase, Trip } from "./types";
-
-interface Data {
-  userId: string;
-  household: Household;
-  members: Member[];
-  items: Item[];
-  purchases: Purchase[];
-  trips: Trip[];
-  movements: Movement[];
-  /** Cantidad en despensa por artículo (suma de movimientos) */
-  stock: Map<string, number>;
-  loading: boolean;
-  error: string | null;
-  reloadHousehold: () => Promise<void>;
-  /** Vuelve a leer todo. Se llama después de cada cambio, sin depender del tiempo real. */
-  refresh: () => Promise<void>;
-  memberName: (userId: string | null) => string;
-}
-
-const Ctx = createContext<Data | null>(null);
-
-export function useData(): Data {
-  const v = useContext(Ctx);
-  if (!v) throw new Error("useData fuera de DataProvider");
-  return v;
-}
 
 export function DataProvider({ userId, household: initial, children }: { userId: string; household: Household; children: ReactNode }) {
   const [household, setHousehold] = useState<Household>(initial);
   const [members, setMembers] = useState<Member[]>([]);
-  const items = useTable<Item>("items", initial.id, { column: "sort" });
-  const purchases = useTable<Purchase>("purchases", initial.id, { column: "created_at" });
-  const trips = useTable<Trip>("shopping_trips", initial.id, { column: "trip_date", ascending: false });
-  const movements = useTable<Movement>("stock_movements", initial.id, { column: "created_at" });
+  const items = useTable<Item>("items", initial.id, "sort");
+  const purchases = useTable<Purchase>("purchases", initial.id, "created_at");
+  const trips = useTable<Trip>("shopping_trips", initial.id, "trip_date", false);
+  const movements = useTable<Movement>("stock_movements", initial.id, "created_at");
   const stock = useMemo(() => {
     const m = new Map<string, number>();
     for (const mv of movements.rows) m.set(mv.item_id, (m.get(mv.item_id) ?? 0) + Number(mv.delta));
@@ -81,11 +56,10 @@ export function DataProvider({ userId, household: initial, children }: { userId:
     trips: trips.rows,
     movements: movements.rows,
     stock,
-    loading: items.loading || purchases.loading || trips.loading,
+    loading: items.loading || purchases.loading || trips.loading || movements.loading,
     error: items.error || purchases.error || trips.error || movements.error,
-    reloadHousehold,
     refresh,
     memberName,
   };
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

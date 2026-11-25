@@ -2,7 +2,13 @@ export type Unit = "g" | "ml" | "unidad";
 export type Cadence = "quincenal" | "semanal";
 
 export const GROUPS = ["Proteína", "Sustituto", "Lácteo", "Harina", "Verdura", "Fruta", "Grasa", "Despensa", "Aseo", "Otro"] as const;
-export const PLACES = ["Makro", "D1", "PriceSmart", "Supermu", "Ara", "Éxito", "Olímpica"];
+export const PLACES = ["D1", "Supermu", "Makro", "PriceSmart", "Éxito", "Olímpica"];
+
+/** Posición del grupo en GROUPS (los desconocidos van al final). */
+export const groupIndex = (g: string) => {
+  const i = (GROUPS as readonly string[]).indexOf(g);
+  return i < 0 ? GROUPS.length : i;
+};
 
 export interface Household {
   id: string;

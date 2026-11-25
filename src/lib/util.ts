@@ -26,6 +26,10 @@ export function fmtDate(iso: string | null | undefined): string {
   return new Date(y, m - 1, d).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" });
 }
 
+/** "14 nov" a partir de una marca de tiempo, en hora de Colombia */
+export const fmtDay = (ts: string) =>
+  new Date(ts).toLocaleDateString("es-CO", { day: "numeric", month: "short", timeZone: "America/Bogota" });
+
 export const monthLabel = (key: string) => {
   const [y, m] = key.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("es-CO", { month: "short", year: "2-digit" });
