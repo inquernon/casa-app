@@ -87,3 +87,36 @@ export interface Movement {
 
 /** Bolsillo del presupuesto según el grupo (para artículos extra) */
 export const pocketForGroup = (grp: string): Pocket => (grp === "Mascotas" ? "mascotas" : "mercado");
+
+export type TxKind = "ingreso" | "gasto";
+export type TxMethod = "efectivo" | "debito" | "credito" | "transferencia";
+export const METHODS: { id: TxMethod; label: string }[] = [
+  { id: "credito", label: "Tarjeta de crédito" },
+  { id: "debito", label: "Débito" },
+  { id: "efectivo", label: "Efectivo" },
+  { id: "transferencia", label: "Transferencia" },
+];
+export const EXPENSE_CATS = ["Mercado", "Vivienda", "Servicios", "Transporte", "Vehículo", "Salud", "Educación", "Ocio", "Ropa", "Mascotas", "Deudas", "Regalos", "Otro"];
+export const INCOME_CATS = ["Salario", "Honorarios", "Ventas", "Otro"];
+
+export interface MoneyTx {
+  id: string;
+  household_id: string;
+  user_id: string;
+  kind: TxKind;
+  amount: number;
+  category: string;
+  method: TxMethod;
+  note: string;
+  tx_date: string;
+  trip_id: string | null;
+  created_at: string;
+}
+
+/** Totales por persona que devuelve household_money (sin detalle). */
+export interface MemberTotals {
+  user_id: string;
+  display_name: string;
+  ingresos: number;
+  gastos: number;
+}

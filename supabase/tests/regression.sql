@@ -121,5 +121,25 @@ do $$ begin
 exception when insufficient_privilege then raise notice 'ok: seed_catalog es interno';
 end $$;
 
+-- 11. (0003) Dinero: cada mercado guardado queda como gasto de quien lo guardó (aquí, Mariana)
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select pg_temp.check((select amount from money_tx where trip_id = :'trip') = 35500, 'mercado guardado = gasto de quien lo guardó');
+select pg_temp.check((select method from money_tx where trip_id = :'trip') = 'credito', 'el mercado se anota con tarjeta de crédito');
+insert into money_tx (household_id, kind, amount, category, method) values (:'hh', 'gasto', 50000, 'Transporte', 'credito');
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+select pg_temp.check((select count(*) from money_tx) = 0, 'Alex no ve el detalle de Mariana');
+insert into money_tx (household_id, kind, amount, category) values (:'hh', 'ingreso', 3000000, 'Salario');
+do $$ begin
+  insert into money_tx (household_id, user_id, kind, amount) values (current_setting('test.hh')::uuid, '22222222-2222-2222-2222-222222222222', 'gasto', 10);
+  raise exception 'FALLA: anotó un gasto a nombre de otra persona';
+exception when others then
+  if sqlerrm like 'FALLA%' then raise; end if;
+  raise notice 'ok: nadie anota movimientos a nombre de otro';
+end $$;
+select pg_temp.check((select sum(ingresos) from household_money(:'hh', '2000-01-01', '2100-01-01')) = 3000000, 'la casa ve el total de ingresos');
+select pg_temp.check((select gastos from household_money(:'hh', '2000-01-01', '2100-01-01') where display_name = 'Mariana') = 85500, 'la casa ve el total de gastos de cada persona');
+set request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
+select pg_temp.check((select count(*) from household_money(:'hh', '2000-01-01', '2100-01-01')) = 0, 'alguien de afuera no ve los totales');
+
 reset role;
 \echo 'TODAS LAS PRUEBAS DE BASE DE DATOS PASARON'

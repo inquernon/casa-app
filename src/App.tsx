@@ -11,6 +11,9 @@ import { Historial } from "./views/Historial";
 import { Analisis } from "./views/Analisis";
 import { Consejos } from "./views/Consejos";
 import { Articulos } from "./views/Articulos";
+import { Dinero } from "./views/Dinero";
+import { Home, Pronto } from "./views/Home";
+import { SECTIONS, type Section } from "./lib/sections";
 
 const TABS = [
   { id: "lista", label: "Lista" },
@@ -21,6 +24,18 @@ const TABS = [
   { id: "articulos", label: "Artículos" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
+
+/** Ruta en el hash: "#inicio", "#dinero", "#cocina/lista"… */
+interface Route { section: Section | "inicio"; tab: Tab }
+function parseRoute(hash: string): Route {
+  const [a, b] = hash.replace(/^#/, "").split("/");
+  // Enlaces viejos ("#lista") siguen abriendo la cocina
+  if (TABS.some((t) => t.id === a)) return { section: "cocina", tab: a as Tab };
+  const section = SECTIONS.some((s) => s.id === a) ? (a as Section) : "inicio";
+  const tab = TABS.some((t) => t.id === b) ? (b as Tab) : "lista";
+  return { section, tab };
+}
+const toHash = (r: Route) => (r.section === "cocina" ? `cocina/${r.tab}` : r.section);
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -62,47 +77,57 @@ export default function App() {
 
 function Shell() {
   const { loading, error } = useData();
-  const initial = (window.location.hash.slice(1) as Tab) || "lista";
-  const [tab, setTab] = useState<Tab>(TABS.some((t) => t.id === initial) ? initial : "lista");
+  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.hash));
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    const onHash = () => {
-      const h = window.location.hash.slice(1) as Tab;
-      if (TABS.some((t) => t.id === h)) setTab(h);
-    };
+    const onHash = () => setRoute(parseRoute(window.location.hash));
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  const go = (t: Tab) => {
-    window.location.hash = t;
-    setTab(t);
+  const go = (r: Route) => {
+    window.location.hash = toHash(r);
+    setRoute(r);
     window.scrollTo(0, 0);
   };
+  const { section, tab } = route;
+  const title = section === "inicio" ? "Casa" : SECTIONS.find((s) => s.id === section)!.label;
 
   return (
     <>
-      <main>
+      <main className={section === "cocina" ? "" : "nonav"}>
         <header className="row spread">
-          <h1>Casa</h1>
+          <div className="row">
+            {section !== "inicio" && <button className="link" onClick={() => go({ section: "inicio", tab })} aria-label="Volver al inicio">‹ Inicio</button>}
+            <h1>{title}</h1>
+          </div>
           <span className={`pill ${error ? "warn" : ""}`}>{error ? "Error" : loading ? "Cargando…" : "Al día"}</span>
         </header>
         {(msg || error) && (
           <div className="banner" role="alert" onClick={() => setMsg(null)}>{msg || error}</div>
         )}
-        {tab === "lista" && <Lista onError={setMsg} />}
-        {tab === "despensa" && <Despensa />}
-        {tab === "historial" && <Historial />}
-        {tab === "analisis" && <Analisis />}
-        {tab === "consejos" && <Consejos />}
-        {tab === "articulos" && <Articulos onError={setMsg} />}
+        {section === "inicio" && <Home onOpen={(s) => go({ section: s, tab })} />}
+        {section === "dinero" && <Dinero onError={setMsg} />}
+        {(section === "casa" || section === "calendario") && <Pronto section={section} />}
+        {section === "cocina" && (
+          <>
+            {tab === "lista" && <Lista onError={setMsg} />}
+            {tab === "despensa" && <Despensa />}
+            {tab === "historial" && <Historial />}
+            {tab === "analisis" && <Analisis />}
+            {tab === "consejos" && <Consejos />}
+            {tab === "articulos" && <Articulos onError={setMsg} />}
+          </>
+        )}
       </main>
-      <nav className="tabs" aria-label="Secciones">
-        {TABS.map((t) => (
-          <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => go(t.id)}>{t.label}</button>
-        ))}
-      </nav>
+      {section === "cocina" && (
+        <nav className="tabs" aria-label="Secciones de la cocina">
+          {TABS.map((t) => (
+            <button key={t.id} aria-current={tab === t.id ? "page" : undefined} onClick={() => go({ section: "cocina", tab: t.id })}>{t.label}</button>
+          ))}
+        </nav>
+      )}
     </>
   );
 }
