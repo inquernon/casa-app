@@ -48,11 +48,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function run(fn: "create_household" | "join_household") {
+  async function run(fn: "create_household_v2" | "join_household") {
     if (!name.trim()) return setMsg("Escribe tu nombre.");
     if (fn === "join_household" && !code.trim()) return setMsg("Escribe el código de invitación.");
     setBusy(true);
-    const args = fn === "create_household" ? { p_name: "Casa", p_display_name: name.trim() } : { p_code: code.trim(), p_display_name: name.trim() };
+    const args = fn === "create_household_v2" ? { p_name: "Casa", p_display_name: name.trim() } : { p_code: code.trim(), p_display_name: name.trim() };
     const { error } = await supabase.rpc(fn, args);
     setBusy(false);
     if (error) return setMsg(errorText(error));
@@ -67,7 +67,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       <div className="card inset">
         <h2>Crear la casa</h2>
         <p className="muted small">Solo la primera persona. Se carga la lista de artículos inicial.</p>
-        <button className="primary" disabled={busy} onClick={() => run("create_household")}>Crear casa</button>
+        <button className="primary" disabled={busy} onClick={() => run("create_household_v2")}>Crear casa</button>
       </div>
       <div className="card inset">
         <h2>Unirme a una casa</h2>

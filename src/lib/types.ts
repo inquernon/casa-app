@@ -1,7 +1,7 @@
 export type Unit = "g" | "ml" | "unidad";
-export type Cadence = "quincenal" | "semanal";
+export type Pocket = "mercado" | "mascotas";
 
-export const GROUPS = ["Proteína", "Sustituto", "Lácteo", "Harina", "Verdura", "Fruta", "Grasa", "Despensa", "Aseo", "Otro"] as const;
+export const GROUPS = ["Proteína", "Sustituto", "Lácteo", "Harina", "Verdura", "Fruta", "Grasa", "Despensa", "Aseo", "Mascotas", "Otro"] as const;
 export const PLACES = ["D1", "Supermu", "Makro", "PriceSmart", "Éxito", "Olímpica"];
 
 /** Posición del grupo en GROUPS (los desconocidos van al final). */
@@ -14,8 +14,8 @@ export interface Household {
   id: string;
   name: string;
   invite_code: string;
-  budget_quincena: number;
-  quincena_start: string;
+  budget_food: number;
+  budget_pets: number;
   menu_start: string;
 }
 
@@ -33,7 +33,11 @@ export interface Item {
   unit: Unit;
   buy_qty: number;
   buy_label: string;
-  cadence: Cadence;
+  /** Cada cuántos días se compra; null = "cuando se acabe" */
+  every_days: number | null;
+  pocket: Pocket;
+  /** Alguien lo marcó como "se está acabando" */
+  running_low: boolean;
   place: string;
   note: string;
   min_stock: number;
@@ -51,6 +55,7 @@ export interface Purchase {
   qty: number;
   unit: Unit;
   price: number;
+  pocket: Pocket;
   place: string;
   purchased_on: string;
   created_by: string | null;
@@ -79,3 +84,6 @@ export interface Movement {
   created_by: string | null;
   created_at: string;
 }
+
+/** Bolsillo del presupuesto según el grupo (para artículos extra) */
+export const pocketForGroup = (grp: string): Pocket => (grp === "Mascotas" ? "mascotas" : "mercado");

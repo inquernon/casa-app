@@ -97,5 +97,29 @@ exception when others then
   raise notice 'ok: save_trip exige ser miembro';
 end $$;
 
+-- 8. (0002) Casa nueva con catálogo completo, sin duplicados
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select create_household_v2('Casa 2', 'Mariana') as hh2 \gset
+select pg_temp.check((select count(*) from items where household_id = :'hh2') > 100, 'casa nueva recibe el catálogo completo');
+select pg_temp.check(not exists (
+  select 1 from items where household_id = :'hh2' group by norm_name(name) having count(*) > 1), 'el catálogo no duplica artículos');
+select pg_temp.check((select every_days from items where household_id = :'hh2' and name = 'Leche UHT') = 15, 'la leche se compra cada 15 días');
+select pg_temp.check((select pocket from items where household_id = :'hh2' and name = 'Cuido perro Dogourmet') = 'mascotas', 'el cuido va al bolsillo de mascotas');
+select pg_temp.check((select budget_food + budget_pets from households where id = :'hh2') = 970000, 'presupuesto mensual 850.000 + 120.000');
+
+-- 9. (0002) "Se está acabando" se limpia al guardar el mercado
+update items set running_low = true where household_id = :'hh2' and name = 'Huevos';
+insert into purchases (household_id, item_id, name, grp, qty, unit, price, place)
+  select household_id, id, name, grp, 30, unit, 15000, 'D1' from items where household_id = :'hh2' and name = 'Huevos';
+select save_trip(:'hh2') is not null as saved2 \gset
+select pg_temp.check((select not running_low from items where household_id = :'hh2' and name = 'Huevos'), 'guardar mercado limpia "se está acabando"');
+
+-- 10. (0002) Las personas no pueden recargar el catálogo a mano
+do $$ begin
+  perform seed_catalog(current_setting('test.hh')::uuid);
+  raise exception 'FALLA: seed_catalog quedó abierto';
+exception when insufficient_privilege then raise notice 'ok: seed_catalog es interno';
+end $$;
+
 reset role;
 \echo 'TODAS LAS PRUEBAS DE BASE DE DATOS PASARON'

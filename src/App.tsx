@@ -9,6 +9,7 @@ import { Lista } from "./views/Lista";
 import { Despensa } from "./views/Despensa";
 import { Historial } from "./views/Historial";
 import { Analisis } from "./views/Analisis";
+import { Consejos } from "./views/Consejos";
 import { Articulos } from "./views/Articulos";
 
 const TABS = [
@@ -16,6 +17,7 @@ const TABS = [
   { id: "despensa", label: "Despensa" },
   { id: "historial", label: "Historial" },
   { id: "analisis", label: "Análisis" },
+  { id: "consejos", label: "Consejos" },
   { id: "articulos", label: "Artículos" },
 ] as const;
 type Tab = (typeof TABS)[number]["id"];
@@ -93,6 +95,7 @@ function Shell() {
         {tab === "despensa" && <Despensa />}
         {tab === "historial" && <Historial />}
         {tab === "analisis" && <Analisis />}
+        {tab === "consejos" && <Consejos />}
         {tab === "articulos" && <Articulos onError={setMsg} />}
       </main>
       <nav className="tabs" aria-label="Secciones">

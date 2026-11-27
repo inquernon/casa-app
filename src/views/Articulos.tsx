@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useData } from "../lib/store";
 import { supabase } from "../lib/supabase";
-import { GROUPS, groupIndex, type Cadence, type Item, type Unit } from "../lib/types";
+import { GROUPS, groupIndex, pocketForGroup, type Item, type Unit } from "../lib/types";
 import { errorText, fmtQty } from "../lib/util";
 import { PlacesDatalist, Sheet } from "../components/Sheet";
 
@@ -28,19 +28,17 @@ export function Articulos({ onError }: { onError: (m: string | null) => void }) 
         <h2>Ajustes del hogar</h2>
         <div className="grid2">
           <label>
-            Presupuesto por quincena (COP)
-            <input type="number" inputMode="numeric" min={0} step={1000} defaultValue={household.budget_quincena}
-              onBlur={(e) => Number(e.target.value) !== Number(household.budget_quincena) && updateHousehold({ budget_quincena: Number(e.target.value) })} />
+            Comida y aseo al mes (COP)
+            <input type="number" inputMode="numeric" min={0} step={1000} defaultValue={household.budget_food}
+              onBlur={(e) => Number(e.target.value) !== Number(household.budget_food) && updateHousehold({ budget_food: Number(e.target.value) })} />
           </label>
           <label>
-            Inicio de la primera quincena
-            <input type="date" defaultValue={household.quincena_start}
-              onChange={(e) => e.target.value && updateHousehold({ quincena_start: e.target.value })} />
+            Mascotas al mes (COP)
+            <input type="number" inputMode="numeric" min={0} step={1000} defaultValue={household.budget_pets}
+              onBlur={(e) => Number(e.target.value) !== Number(household.budget_pets) && updateHousehold({ budget_pets: Number(e.target.value) })} />
           </label>
         </div>
-        <p className="muted small">
-          Cada quincena dura 15 días desde esa fecha. Lo quincenal comprado sale de la lista hasta la siguiente quincena; lo semanal, hasta la siguiente semana.
-        </p>
+        <p className="muted small">El presupuesto es por mes calendario. Cada artículo vuelve a la lista cuando pasan sus días desde la última compra.</p>
         <div className="row spread">
           <span>
             Código para invitar a la casa: <b className="code">{household.invite_code}</b>
@@ -69,13 +67,13 @@ export function Articulos({ onError }: { onError: (m: string | null) => void }) 
       <div className="card">
         <div className="row spread">
           <h2>Artículos de la lista</h2>
-          <button onClick={() => setEditing({ grp: "Despensa", unit: "unidad", cadence: "quincenal", buy_qty: 1, active: true })}>+ Nuevo</button>
+          <button onClick={() => setEditing({ grp: "Despensa", unit: "unidad", every_days: 30, buy_qty: 1, active: true })}>+ Nuevo</button>
         </div>
         {list.map((i) => (
           <div className="edit-row" key={i.id}>
             <div className="row spread">
               <b>{i.name}</b>
-              <span className={`pill ${i.active ? "" : "warn"}`}>{!i.active ? "Pausado" : i.cadence === "semanal" ? "Semanal" : "Quincenal"}</span>
+              <span className={`pill ${i.active ? "" : "warn"}`}>{!i.active ? "Pausado" : i.every_days ? `Cada ${i.every_days} días` : "Cuando se acabe"}</span>
             </div>
             <span className="muted small">
               {i.grp} · {i.buy_label || fmtQty(i.buy_qty, i.unit)} ({fmtQty(i.buy_qty, i.unit)}){i.place ? ` · ${i.place}` : ""}
@@ -100,7 +98,7 @@ function ItemSheet({ item, onClose, onError }: { item: Partial<Item>; onClose: (
     unit: (item.unit ?? "unidad") as Unit,
     buy_qty: String(item.buy_qty ?? ""),
     buy_label: item.buy_label ?? "",
-    cadence: (item.cadence ?? "quincenal") as Cadence,
+    every_days: item.every_days == null ? "" : String(item.every_days),
     place: item.place ?? "",
     note: item.note ?? "",
     min_stock: String(item.min_stock ?? 0),
@@ -110,7 +108,15 @@ function ItemSheet({ item, onClose, onError }: { item: Partial<Item>; onClose: (
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!f.name.trim()) return;
-    const row = { ...f, name: f.name.trim(), buy_qty: Number(f.buy_qty) || 0, min_stock: Number(f.min_stock) || 0 };
+    const days = Number(f.every_days);
+    const row = {
+      ...f,
+      name: f.name.trim(),
+      buy_qty: Number(f.buy_qty) || 0,
+      min_stock: Number(f.min_stock) || 0,
+      every_days: f.every_days.trim() && days > 0 ? Math.round(days) : null,
+      pocket: pocketForGroup(f.grp),
+    };
     const { error } = item.id
       ? await supabase.from("items").update(row).eq("id", item.id)
       : await supabase.from("items").insert({ ...row, household_id: household.id });
@@ -125,7 +131,7 @@ function ItemSheet({ item, onClose, onError }: { item: Partial<Item>; onClose: (
         <label>Nombre<input required value={f.name} onChange={set("name")} /></label>
         <div className="grid2">
           <label>Grupo<select value={f.grp} onChange={set("grp")}>{GROUPS.map((g) => <option key={g}>{g}</option>)}</select></label>
-          <label>Frecuencia<select value={f.cadence} onChange={set("cadence")}><option value="quincenal">Quincenal</option><option value="semanal">Semanal</option></select></label>
+          <label>Cada cuántos días<input type="number" inputMode="numeric" min={1} step={1} placeholder="Vacío = cuando se acabe" value={f.every_days} onChange={set("every_days")} /></label>
         </div>
         <div className="grid2">
           <label>Unidad<select value={f.unit} onChange={set("unit")}><option value="g">Gramos</option><option value="ml">Mililitros</option><option value="unidad">Unidades</option></select></label>

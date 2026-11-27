@@ -67,7 +67,7 @@ input, select { font: inherit; color: var(--ink); background: var(--bg); border:
 /* Lista */
 
 /* Tabs */
-nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, 1fr); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
+nav.tabs { position: fixed; bottom: 0; left: 0; right: 0; background: var(--surface); border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(6, 1fr); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
 nav.tabs button { border: none; border-radius: 0; background: none; color: var(--muted); font-weight: 700; font-size: .85rem; min-height: 56px; }
 nav.tabs button[aria-current="page"] { color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
 
@@ -131,3 +131,18 @@ button, .lrow .info { touch-action: manipulation; }
 nav.tabs button { font-size: .76rem; padding: 0 2px; }
 .pill.bad { background: var(--warn-soft); color: var(--bad); }
 .sheet .banner { cursor: default; }
+
+/* Presupuesto por bolsillo */
+.pocket { display: grid; gap: 6px; }
+/* Lugar sugerido visible en cada fila */
+.lrow .place { display: inline-block; font-size: .78rem; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+.lrow .place.suggested { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+/* Selector segmentado */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; min-height: 40px; padding: 6px 10px; font-size: .85rem; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--surface); }
+/* Sugerencias */
+.advice { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--line); justify-items: start; }
+.advice:first-of-type { border-top: 0; }
+.advice.alerta b { color: var(--bad); }
+nav.tabs button { font-size: .7rem; }

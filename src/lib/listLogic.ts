@@ -1,5 +1,16 @@
-import type { Item, Purchase } from "./types";
-import { periodStart, type Periods } from "./util";
+import type { Item, Pocket, Purchase } from "./types";
+import { addDays, daysBetween } from "./util";
+
+/** Por qué un artículo está en la lista */
+export type DueReason = "marcado" | "acabando" | "agotado" | "toca" | "nunca";
+
+export const REASON_LABEL: Record<DueReason, string> = {
+  marcado: "",
+  acabando: "se está acabando",
+  agotado: "se acabó en la despensa",
+  toca: "ya toca",
+  nunca: "sin compras registradas",
+};
 
 export interface ListState {
   /** Compras marcadas en el mercado abierto (aún sin "Guardar mercado") */
@@ -7,47 +18,57 @@ export interface ListState {
   pendingByItem: Map<string, Purchase>;
   /** Compras marcadas que no son del catálogo */
   extras: Purchase[];
-  /** Artículos activos que se muestran en la lista */
+  /** Artículos que hay que comprar, con el motivo */
   toBuy: Item[];
-  /** Artículos activos ya comprados en su periodo y que aún hay en despensa */
-  already: Item[];
+  reason: (i: Item) => DueReason | null;
+  /** Artículos con frecuencia que todavía no tocan */
+  upToDate: Item[];
+  /** Artículos sin frecuencia ("cuando se acabe") que nadie ha marcado */
+  whenOut: Item[];
   /** Cuántos de toBuy faltan por marcar */
   remaining: number;
-  /** Última compra guardada del artículo dentro de su periodo */
-  boughtInPeriod: (i: Item) => Purchase | null;
-  /** Comprado en el periodo, pero la despensa ya llegó al mínimo */
-  ranOut: (i: Item) => boolean;
-  /** Gastado desde el inicio de la quincena, incluido lo marcado */
-  spent: number;
-  pendingTotal: number;
+  lastBought: (i: Item) => Purchase | null;
+  /** Fecha en que vuelve a tocar comprar el artículo */
+  nextDue: (i: Item) => string | null;
   /** Lugar de la última compra marcada, para sugerirlo en la siguiente */
   lastPlace: string;
+  pendingTotal: number;
 }
 
-/** Reglas de la lista de mercado. Sin React ni Supabase para poder probarlas. */
-export function buildList(items: Item[], purchases: Purchase[], stock: Map<string, number>, p: Periods): ListState {
+/**
+ * Reglas de la lista de mercado. Sin React ni Supabase para poder probarlas.
+ * Un artículo entra a la lista si: alguien lo marcó como "se está acabando"; la despensa llegó al mínimo
+ * después de una compra; pasaron sus días desde la última compra; o tiene frecuencia y nunca se ha comprado.
+ */
+export function buildList(items: Item[], purchases: Purchase[], stock: Map<string, number>, today: string): ListState {
   const pending = purchases.filter((x) => x.trip_id === null);
   const pendingByItem = new Map(pending.filter((x) => x.item_id).map((x) => [x.item_id as string, x]));
 
-  const lastBought = new Map<string, Purchase>();
+  const lastMap = new Map<string, Purchase>();
   for (const x of purchases) {
     if (!x.trip_id || !x.item_id) continue;
-    const prev = lastBought.get(x.item_id);
-    if (!prev || x.purchased_on > prev.purchased_on) lastBought.set(x.item_id, x);
+    const prev = lastMap.get(x.item_id);
+    if (!prev || x.purchased_on > prev.purchased_on) lastMap.set(x.item_id, x);
   }
-
-  const boughtInPeriod = (i: Item) => {
-    const last = lastBought.get(i.id);
-    return last && last.purchased_on >= periodStart(i.cadence, p) ? last : null;
+  const lastBought = (i: Item) => lastMap.get(i.id) ?? null;
+  const nextDue = (i: Item) => {
+    const last = lastBought(i);
+    return last && i.every_days ? addDays(last.purchased_on, i.every_days) : null;
   };
-  const ranOut = (i: Item) => {
-    const last = boughtInPeriod(i);
-    return !!last && Number(last.qty) > 0 && (stock.get(i.id) ?? 0) <= Number(i.min_stock);
+
+  const reason = (i: Item): DueReason | null => {
+    if (pendingByItem.has(i.id)) return "marcado";
+    if (i.running_low) return "acabando";
+    const last = lastBought(i);
+    if (last && Number(last.qty) > 0 && (stock.get(i.id) ?? 0) <= Number(i.min_stock)) return "agotado";
+    if (i.every_days == null) return null;
+    if (!last) return "nunca";
+    return daysBetween(last.purchased_on, today) >= i.every_days ? "toca" : null;
   };
 
   const active = items.filter((i) => i.active);
-  const toBuy = active.filter((i) => pendingByItem.has(i.id) || !boughtInPeriod(i) || ranOut(i));
-  const already = active.filter((i) => !pendingByItem.has(i.id) && boughtInPeriod(i) && !ranOut(i));
+  const toBuy = active.filter((i) => reason(i) !== null);
+  const rest = active.filter((i) => reason(i) === null);
   const sum = (xs: Purchase[]) => xs.reduce((a, x) => a + Number(x.price), 0);
 
   return {
@@ -55,12 +76,23 @@ export function buildList(items: Item[], purchases: Purchase[], stock: Map<strin
     pendingByItem,
     extras: pending.filter((x) => !x.item_id),
     toBuy,
-    already,
+    reason,
+    upToDate: rest.filter((i) => i.every_days != null),
+    whenOut: rest.filter((i) => i.every_days == null),
     remaining: toBuy.filter((i) => !pendingByItem.has(i.id)).length,
-    boughtInPeriod,
-    ranOut,
-    spent: sum(purchases.filter((x) => x.purchased_on >= p.q)),
-    pendingTotal: sum(pending),
+    lastBought,
+    nextDue,
     lastPlace: [...pending].sort((a, b) => b.created_at.localeCompare(a.created_at))[0]?.place ?? "",
+    pendingTotal: sum(pending),
   };
+}
+
+/** Gasto del periodo [start, end] por bolsillo, incluidas las compras marcadas sin guardar. */
+export function spentByPocket(purchases: Purchase[], start: string, end: string): Record<Pocket, number> {
+  const out: Record<Pocket, number> = { mercado: 0, mascotas: 0 };
+  for (const x of purchases) {
+    if (x.purchased_on < start || x.purchased_on > end) continue;
+    out[x.pocket ?? "mercado"] += Number(x.price);
+  }
+  return out;
 }

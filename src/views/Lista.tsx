@@ -1,28 +1,58 @@
 import { useState } from "react";
 import { useData } from "../lib/store";
 import { supabase } from "../lib/supabase";
-import { GROUPS, type Item, type Purchase, type Unit } from "../lib/types";
-import { buildList } from "../lib/listLogic";
-import { errorText, fmtDate, fmtQty, money, parseMoney, parseQty, periods, todayCO, unitLabel } from "../lib/util";
+import { GROUPS, groupIndex, pocketForGroup, type Item, type Purchase, type Unit } from "../lib/types";
+import { buildList, REASON_LABEL } from "../lib/listLogic";
+import { errorText, fmtDate, fmtQty, money, parseMoney, parseQty, todayCO, unitLabel } from "../lib/util";
 import { PlacesDatalist, Sheet, Switch } from "../components/Sheet";
+import { BudgetCard } from "../components/BudgetCard";
+import { MoveSheet } from "../components/MoveSheet";
 
-type BuyTarget = { item: Pick<Item, "id" | "name" | "grp" | "unit" | "buy_qty" | "place"> | null; extraName?: string; extraGrp?: string; extraUnit?: Unit; existing?: Purchase };
+type BuyTarget = {
+  item: Pick<Item, "id" | "name" | "grp" | "unit" | "buy_qty" | "place" | "pocket"> | null;
+  extraName?: string;
+  extraGrp?: string;
+  extraUnit?: Unit;
+  existing?: Purchase;
+};
+type GroupBy = "tienda" | "grupo";
 
 export function Lista({ onError }: { onError: (msg: string | null) => void }) {
-  const { household, items, purchases, stock, refresh } = useData();
+  const { items, purchases, stock, refresh, household } = useData();
   const [buy, setBuy] = useState<BuyTarget | null>(null);
+  const [consume, setConsume] = useState<Item | null>(null);
   const [extraOpen, setExtraOpen] = useState(false);
   const [confirmSave, setConfirmSave] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [groupBy, setGroupBy] = useState<GroupBy>(() => {
+    try {
+      return (localStorage.getItem("lista-agrupar") as GroupBy) || "tienda";
+    } catch {
+      return "tienda";
+    }
+  });
 
-  const p = periods(household.quincena_start);
-  const { pending, pendingByItem, extras, toBuy, already, remaining, boughtInPeriod, ranOut, spent, pendingTotal, lastPlace } = buildList(items, purchases, stock, p);
-  const budget = Number(household.budget_quincena) || 0;
-  const pct = budget ? Math.min(100, (spent / budget) * 100) : 0;
-  const over = budget > 0 && spent > budget;
+  const today = todayCO();
+  const { pending, pendingByItem, extras, toBuy, reason, upToDate, whenOut, remaining, nextDue, lastBought, pendingTotal, lastPlace } =
+    buildList(items, purchases, stock, today);
+
+  function changeGroupBy(g: GroupBy) {
+    setGroupBy(g);
+    try {
+      localStorage.setItem("lista-agrupar", g);
+    } catch {
+      /* sin almacenamiento local: solo dura esta visita */
+    }
+  }
 
   async function unmark(purchase: Purchase) {
     const { error } = await supabase.from("purchases").delete().eq("id", purchase.id);
+    onError(error ? errorText(error) : null);
+    await refresh();
+  }
+
+  async function setRunningLow(i: Item, on: boolean) {
+    const { error } = await supabase.from("items").update({ running_low: on }).eq("id", i.id);
     onError(error ? errorText(error) : null);
     await refresh();
   }
@@ -36,87 +66,102 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
     await refresh();
   }
 
-  /** Fila de la lista. `extra` = compra marcada que no está en el catálogo. */
-  const row = (i: Item | null, pend: Purchase | undefined, note?: string) => {
+  const openBuy = (i: Item | null, pend?: Purchase) =>
+    i ? setBuy({ item: i, existing: pend }) : pend && setBuy({ item: null, existing: pend, extraName: pend.name, extraGrp: pend.grp, extraUnit: pend.unit });
+
+  /** Fila para comprar: interruptor, nombre, cantidad sugerida, motivo y lugar */
+  const buyRow = (i: Item | null, pend: Purchase | undefined) => {
     const name = i?.name ?? pend?.name ?? "";
-    const open = () =>
-      i ? setBuy({ item: i, existing: pend }) : pend && setBuy({ item: null, existing: pend, extraName: pend.name, extraGrp: pend.grp, extraUnit: pend.unit });
+    const why = i ? reason(i) : null;
+    const note = !i ? "extra" : why && why !== "marcado" ? REASON_LABEL[why] : i.every_days ? `cada ${i.every_days} días` : "";
+    const place = pend ? pend.place : i?.place;
     return (
       <div className={`lrow ${pend ? "done" : ""}`} key={i?.id ?? pend?.id}>
         <Switch checked={!!pend} label={`Comprado: ${name}`} onChange={(on) => (on ? i && setBuy({ item: i }) : pend && unmark(pend))} />
-        <button className="info" onClick={open}>
+        <button className="info" onClick={() => openBuy(i, pend)}>
           <span className="name">{name}</span>
           <br />
           <span className="qty">
             {pend ? fmtQty(pend.qty, pend.unit) : i ? i.buy_label || fmtQty(i.buy_qty, i.unit) : ""}
-            {note ? ` · ${note}` : i?.cadence === "semanal" ? " · semanal" : ""}
+            {note ? ` · ${note}` : ""}
           </span>
         </button>
         <span className="price num">
-          {pend ? (
-            <>
-              <b>{money(pend.price)}</b>
-              {pend.place}
-            </>
-          ) : (
-            <span className="muted">{i?.place}</span>
-          )}
+          {pend ? <b>{money(pend.price)}</b> : null}
+          {place ? <span className={`place ${pend ? "" : "suggested"}`}>{place}</span> : null}
         </span>
       </div>
     );
   };
 
+  /** Fila de lo que no toca: cuándo toca, "se está acabando" y "Consumí" */
+  const restRow = (i: Item) => {
+    const next = nextDue(i);
+    const last = lastBought(i);
+    return (
+      <div className="edit-row" key={i.id}>
+        <div className="row spread">
+          <b>{i.name}</b>
+          <span className="muted small">{next ? `toca el ${fmtDate(next)}` : last ? `última: ${fmtDate(last.purchased_on)}` : "sin compras"}</span>
+        </div>
+        <div className="row">
+          <button className="link" onClick={() => setRunningLow(i, true)}>Se está acabando</button>
+          <button className="link" onClick={() => setConsume(i)}>Consumí</button>
+          <button className="link" onClick={() => setBuy({ item: i })}>Comprar ya</button>
+        </div>
+      </div>
+    );
+  };
+
+  // Secciones: por tienda sugerida (o lugar de compra si ya está marcado) o por grupo
+  const sectionOf = (i: Item | null, pend?: Purchase) =>
+    groupBy === "tienda" ? (pend?.place || i?.place || "Sin lugar") : (i?.grp ?? pend?.grp ?? "Otro");
+  const rows: { key: string; i: Item | null; pend?: Purchase }[] = [
+    ...toBuy.map((i) => ({ key: sectionOf(i, pendingByItem.get(i.id)), i, pend: pendingByItem.get(i.id) })),
+    ...extras.map((x) => ({ key: sectionOf(null, x), i: null, pend: x })),
+  ];
+  const sections = [...new Set(rows.map((r) => r.key))].sort((a, b) =>
+    groupBy === "grupo" ? groupIndex(a) - groupIndex(b) : a === "Sin lugar" ? 1 : b === "Sin lugar" ? -1 : a.localeCompare(b, "es"),
+  );
+  const sortRows = (a: (typeof rows)[number], b: (typeof rows)[number]) =>
+    groupIndex(a.i?.grp ?? a.pend?.grp ?? "Otro") - groupIndex(b.i?.grp ?? b.pend?.grp ?? "Otro") || (a.i?.sort ?? 999) - (b.i?.sort ?? 999);
+
   return (
     <>
-      <div className="card">
-        <div className="row spread">
-          <h2>Quincena</h2>
-          <span className="muted small">
-            {fmtDate(p.q)} – {fmtDate(p.qEnd)}
-          </span>
-        </div>
-        <div className="summary">
-          <div className="tile"><b className="num">{money(spent)}</b><span>gastado</span></div>
-          <div className="tile"><b className="num">{money(budget)}</b><span>presupuesto</span></div>
-          <div className="tile">
-            <b className="num" style={{ color: over ? "var(--bad)" : undefined }}>{money(budget - spent)}</b>
-            <span>{over ? "pasado" : "queda"}</span>
-          </div>
-        </div>
-        <div className={`bar ${over ? "over" : ""}`}><i style={{ width: `${pct}%` }} /></div>
-      </div>
+      <BudgetCard />
 
       <div className="row spread">
-        <span className="muted small">
-          {remaining} por comprar · semana desde {fmtDate(p.w)}
-        </span>
-        <button onClick={() => setExtraOpen(true)}>+ Artículo extra</button>
+        <span className="muted small">{remaining} por comprar</span>
+        <div className="row">
+          <div className="seg" role="group" aria-label="Agrupar la lista">
+            <button aria-pressed={groupBy === "tienda"} onClick={() => changeGroupBy("tienda")}>Por tienda</button>
+            <button aria-pressed={groupBy === "grupo"} onClick={() => changeGroupBy("grupo")}>Por grupo</button>
+          </div>
+          <button onClick={() => setExtraOpen(true)}>+ Extra</button>
+        </div>
       </div>
 
-      {GROUPS.map((g) => {
-        const rows = toBuy.filter((i) => (i.grp || "Otro") === g).sort((a, b) => a.sort - b.sort);
-        const ex = extras.filter((x) => (x.grp || "Otro") === g);
-        if (!rows.length && !ex.length) return null;
-        return (
-          <div className="card tight" key={g}>
-            <h3>{g}</h3>
-            {rows.map((i) => row(i, pendingByItem.get(i.id), !pendingByItem.has(i.id) && ranOut(i) ? "se acabó en la despensa" : undefined))}
-            {ex.map((x) => row(null, x, "extra"))}
-          </div>
-        );
-      })}
-      {!toBuy.length && !extras.length && (
-        <div className="card"><p className="muted">No hay nada por comprar en este periodo.</p></div>
+      {sections.map((sec) => (
+        <div className="card tight" key={sec}>
+          <h3>{sec}</h3>
+          {rows.filter((r) => r.key === sec).sort(sortRows).map((r) => buyRow(r.i, r.pend))}
+        </div>
+      ))}
+      {!rows.length && <div className="card"><p className="muted">No hay nada por comprar ahora.</p></div>}
+
+      {upToDate.length > 0 && (
+        <details className="card">
+          <summary className="row spread"><b>Al día ({upToDate.length})</b><span className="muted small">Ver</span></summary>
+          <p className="muted small">Vuelven solos a la lista cuando pasen sus días. Si algo se acaba antes, márquenlo.</p>
+          {[...upToDate].sort((a, b) => (nextDue(a) ?? "").localeCompare(nextDue(b) ?? "")).map(restRow)}
+        </details>
       )}
 
-      {already.length > 0 && (
+      {whenOut.length > 0 && (
         <details className="card">
-          <summary className="row spread">
-            <b>Ya comprados en este periodo ({already.length})</b>
-            <span className="muted small">Ver</span>
-          </summary>
-          <p className="muted small">Vuelven a la lista en la próxima quincena o semana. Actívalos si necesitas comprarlos otra vez.</p>
-          {already.map((i) => row(i, undefined, `comprado ${fmtDate(boughtInPeriod(i)?.purchased_on)}`))}
+          <summary className="row spread"><b>Cuando se acabe ({whenOut.length})</b><span className="muted small">Ver</span></summary>
+          <p className="muted small">No tienen frecuencia fija. Toquen "Se está acabando" y entran a la lista.</p>
+          {[...whenOut].sort((a, b) => groupIndex(a.grp) - groupIndex(b.grp) || a.name.localeCompare(b.name, "es")).map(restRow)}
         </details>
       )}
 
@@ -136,6 +181,7 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
       )}
 
       {buy && <BuySheet target={buy} lastPlace={lastPlace} onClose={() => setBuy(null)} />}
+      {consume && <MoveSheet item={consume} mode="consumo" current={stock.get(consume.id) ?? 0} onClose={() => setConsume(null)} />}
       {extraOpen && (
         <ExtraSheet
           onClose={() => setExtraOpen(false)}
@@ -153,7 +199,7 @@ export function Lista({ onError }: { onError: (msg: string | null) => void }) {
             <br />
             <span className="muted small">{[...new Set(pending.map((x) => x.place).filter(Boolean))].join(", ")}</span>
           </p>
-          <p className="muted small">Se guarda en el historial con fecha {fmtDate(todayCO())} y lo comprado se suma a la despensa.</p>
+          <p className="muted small">Se guarda en el historial con fecha {fmtDate(today)} y lo comprado se suma a la despensa.</p>
           <div className="row">
             <button className="primary" disabled={saving} onClick={saveTrip}>Guardar</button>
             <button onClick={() => setConfirmSave(false)}>Cancelar</button>
@@ -193,6 +239,7 @@ function BuySheet({ target, lastPlace, onClose }: { target: BuyTarget; lastPlace
           item_id: item?.id ?? null,
           name,
           grp: item?.grp ?? target.extraGrp ?? "Otro",
+          pocket: item?.pocket ?? pocketForGroup(target.extraGrp ?? ""),
         });
     setBusy(false);
     if (error) return setErr(errorText(error));
@@ -240,7 +287,7 @@ function ExtraSheet({ onClose, onNext, onError }: { onClose: () => void; onNext:
     if (keep) {
       const { data, error } = await supabase
         .from("items")
-        .insert({ household_id: household.id, name: name.trim(), grp, unit, buy_qty: 1, cadence: "quincenal" })
+        .insert({ household_id: household.id, name: name.trim(), grp, unit, buy_qty: 1, every_days: null, pocket: pocketForGroup(grp) })
         .select()
         .single();
       if (error) return onError(errorText(error));

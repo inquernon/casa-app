@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, daysBetween, fmtQty, parseMoney, parseQty, periodStart, periods, unitPrice } from "../util";
+import { addDays, daysBetween, fmtQty, monthOf, parseMoney, parseQty, unitPrice } from "../util";
 
 describe("fechas", () => {
   it("suma días cruzando mes y año", () => {
@@ -13,25 +13,13 @@ describe("fechas", () => {
   });
 });
 
-describe("periodos (quincena de 15 días, semana 1 = días 0-6)", () => {
-  const start = "2026-11-12";
-  it.each([
-    ["2026-11-12", "2026-11-12", "2026-11-12", "2026-11-26"],
-    ["2026-11-18", "2026-11-12", "2026-11-12", "2026-11-26"],
-    ["2026-11-19", "2026-11-12", "2026-11-19", "2026-11-26"],
-    ["2026-11-26", "2026-11-12", "2026-11-19", "2026-11-26"],
-    ["2026-11-27", "2026-11-27", "2026-11-27", "2026-12-11"],
-    ["2026-12-04", "2026-11-27", "2026-12-04", "2026-12-11"],
-  ])("hoy %s → quincena %s, semana %s, fin %s", (today, q, w, qEnd) => {
-    expect(periods(start, today)).toEqual({ q, w, qEnd });
+describe("mes calendario", () => {
+  it("noviembre tiene 30 días", () => {
+    expect(monthOf("2026-11-25")).toEqual({ start: "2026-11-01", end: "2026-11-30", day: 25, days: 30 });
   });
-  it("antes del inicio usa el inicio", () => {
-    expect(periods(start, "2026-11-01")).toEqual({ q: start, w: start, qEnd: "2026-11-26" });
-  });
-  it("periodStart según frecuencia", () => {
-    const p = periods(start, "2026-11-20");
-    expect(periodStart("quincenal", p)).toBe("2026-11-12");
-    expect(periodStart("semanal", p)).toBe("2026-11-19");
+  it("febrero no bisiesto y diciembre", () => {
+    expect(monthOf("2027-02-10")).toEqual({ start: "2027-02-01", end: "2027-02-28", day: 10, days: 28 });
+    expect(monthOf("2026-12-31").end).toBe("2026-12-31");
   });
 });
 

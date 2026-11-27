@@ -1,4 +1,4 @@
-import type { Cadence, Unit } from "./types";
+import type { Unit } from "./types";
 
 export const money = (n: number) => "$" + Math.round(Number(n) || 0).toLocaleString("es-CO");
 
@@ -35,21 +35,20 @@ export const monthLabel = (key: string) => {
   return new Date(y, m - 1, 1).toLocaleDateString("es-CO", { month: "short", year: "2-digit" });
 };
 
-export interface Periods {
-  q: string; // inicio de la quincena actual
-  qEnd: string; // último día de la quincena
-  w: string; // inicio de la semana actual (semana 1: días 0-6; semana 2: días 7-14)
+export interface Month {
+  start: string; // primer día del mes
+  end: string; // último día del mes
+  day: number; // día del mes de hoy (1..days)
+  days: number; // días que tiene el mes
 }
 
-/** Quincenas de 15 días contadas desde `start`. */
-export function periods(start: string, today = todayCO()): Periods {
-  if (today < start) return { q: start, w: start, qEnd: addDays(start, 14) };
-  const q = addDays(start, 15 * Math.floor(daysBetween(start, today) / 15));
-  const w = daysBetween(q, today) >= 7 ? addDays(q, 7) : q;
-  return { q, w, qEnd: addDays(q, 14) };
+/** Mes calendario que contiene `today`. */
+export function monthOf(today = todayCO()): Month {
+  const [y, m, d] = parts(today);
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const mm = String(m).padStart(2, "0");
+  return { start: `${y}-${mm}-01`, end: `${y}-${mm}-${String(days).padStart(2, "0")}`, day: d, days };
 }
-
-export const periodStart = (cadence: Cadence, p: Periods) => (cadence === "semanal" ? p.w : p.q);
 
 export function fmtQty(qty: number, unit: Unit): string {
   const n = Number(qty) || 0;
