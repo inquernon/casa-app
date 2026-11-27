@@ -12,10 +12,12 @@ import { Analisis } from "./views/Analisis";
 import { Consejos } from "./views/Consejos";
 import { Articulos } from "./views/Articulos";
 import { Dinero } from "./views/Dinero";
+import { Hoy } from "./views/Hoy";
 import { Home, Pronto } from "./views/Home";
 import { SECTIONS, type Section } from "./lib/sections";
 
 const TABS = [
+  { id: "hoy", label: "Hoy" },
   { id: "lista", label: "Lista" },
   { id: "despensa", label: "Despensa" },
   { id: "historial", label: "Historial" },
@@ -32,7 +34,7 @@ function parseRoute(hash: string): Route {
   // Enlaces viejos ("#lista") siguen abriendo la cocina
   if (TABS.some((t) => t.id === a)) return { section: "cocina", tab: a as Tab };
   const section = SECTIONS.some((s) => s.id === a) ? (a as Section) : "inicio";
-  const tab = TABS.some((t) => t.id === b) ? (b as Tab) : "lista";
+  const tab = TABS.some((t) => t.id === b) ? (b as Tab) : "hoy";
   return { section, tab };
 }
 const toHash = (r: Route) => (r.section === "cocina" ? `cocina/${r.tab}` : r.section);
@@ -112,6 +114,7 @@ function Shell() {
         {(section === "casa" || section === "calendario") && <Pronto section={section} />}
         {section === "cocina" && (
           <>
+            {tab === "hoy" && <Hoy onError={setMsg} />}
             {tab === "lista" && <Lista onError={setMsg} />}
             {tab === "despensa" && <Despensa />}
             {tab === "historial" && <Historial />}

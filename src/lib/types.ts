@@ -120,3 +120,50 @@ export interface MemberTotals {
   ingresos: number;
   gastos: number;
 }
+
+export type Meal = "desayuno" | "media_manana" | "almuerzo" | "media_tarde" | "cena";
+export const MEALS: { id: Meal; label: string }[] = [
+  { id: "desayuno", label: "Desayuno" },
+  { id: "media_manana", label: "Media mañana" },
+  { id: "almuerzo", label: "Almuerzo" },
+  { id: "media_tarde", label: "Media tarde" },
+  { id: "cena", label: "Cena" },
+];
+/** Para quién se preparó: define qué porción se descuenta */
+export type Who = "ambos" | "mariana" | "alex";
+
+export interface Recipe {
+  id: string;
+  household_id: string;
+  name: string;
+  meal: Meal | "tanda";
+  minutes: number;
+  steps: string;
+}
+
+export interface RecipeIngredient {
+  id: string;
+  household_id: string;
+  recipe_id: string;
+  item_id: string;
+  qty_m: number;
+  qty_a: number;
+}
+
+export interface MenuEntry {
+  household_id: string;
+  day: number;
+  meal: Meal;
+  recipe_id: string;
+}
+
+export interface MealLog {
+  id: string;
+  household_id: string;
+  log_date: string;
+  meal: Meal;
+  recipe_id: string | null;
+  who: Who;
+  created_by: string | null;
+  created_at: string;
+}

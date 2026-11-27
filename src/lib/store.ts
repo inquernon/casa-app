@@ -1,5 +1,5 @@
 import { createContext, useContext } from "react";
-import type { Household, Item, Member, Movement, Purchase, Trip } from "./types";
+import type { Household, Item, MealLog, Member, MenuEntry, Movement, Purchase, Recipe, RecipeIngredient, Trip } from "./types";
 
 export interface Data {
   userId: string;
@@ -9,6 +9,10 @@ export interface Data {
   purchases: Purchase[];
   trips: Trip[];
   movements: Movement[];
+  recipes: Recipe[];
+  ingredients: RecipeIngredient[];
+  plan: MenuEntry[];
+  mealLogs: MealLog[];
   /** Cantidad en despensa por artículo (suma de movimientos) */
   stock: Map<string, number>;
   loading: boolean;

@@ -141,5 +141,32 @@ select pg_temp.check((select gastos from household_money(:'hh', '2000-01-01', '2
 set request.jwt.claim.sub = '33333333-3333-3333-3333-333333333333';
 select pg_temp.check((select count(*) from household_money(:'hh', '2000-01-01', '2100-01-01')) = 0, 'alguien de afuera no ve los totales');
 
+-- 12. (0004) Menú y "Preparé"
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select pg_temp.check((select count(*) from menu_plan where household_id = :'hh2') = 56, 'la casa nueva recibe el menú de 14 días');
+select pg_temp.check(not exists (select 1 from items where household_id = :'hh2' group by norm_name(name) having count(*) > 1), 'cargar el menú no duplica artículos');
+select id as rec from recipes where household_id = :'hh2' and name = 'Tostadas con aguacate y huevo revuelto' \gset
+select prepare_meal(:'hh2', '2026-11-30', 'desayuno', :'rec', 'ambos') as log \gset
+select pg_temp.check((select s.qty from stock s join items i on i.id = s.item_id where i.household_id = :'hh2' and i.name = 'Huevos') = 28, 'Preparé descuenta 2 huevos (Mariana + Alex)');
+select pg_temp.check(not exists (select 1 from stock s join items i on i.id = s.item_id where i.household_id = :'hh2' and s.qty < 0), 'Preparé nunca deja la despensa en negativo');
+do $$ begin
+  perform prepare_meal((select household_id from recipes where name = 'Pera' limit 1), '2026-11-30', 'desayuno',
+                       (select id from recipes where name = 'Pera' and household_id = (select household_id from recipes where name = 'Pera' limit 1)), 'ambos');
+  raise exception 'FALLA: dejó preparar dos veces la misma comida';
+exception when unique_violation then raise notice 'ok: una comida se marca una sola vez por día';
+end $$;
+select undo_meal(:'log');
+select pg_temp.check((select s.qty from stock s join items i on i.id = s.item_id where i.household_id = :'hh2' and i.name = 'Huevos') = 30, 'deshacer devuelve lo descontado');
+select prepare_meal(:'hh2', '2026-11-30', 'desayuno', :'rec', 'mariana') is not null as ok3 \gset
+select pg_temp.check((select s.qty from stock s join items i on i.id = s.item_id where i.household_id = :'hh2' and i.name = 'Huevos') = 29, 'Preparé solo para Mariana descuenta su porción');
+set request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+do $$ begin
+  perform prepare_meal((select household_id from meal_logs limit 1), '2026-12-01', 'cena', (select recipe_id from meal_logs limit 1), 'ambos');
+  raise exception 'FALLA: alguien de otra casa preparó';
+exception when others then
+  if sqlerrm like 'FALLA%' then raise; end if;
+  raise notice 'ok: Preparé exige ser de la casa';
+end $$;
+
 reset role;
 \echo 'TODAS LAS PRUEBAS DE BASE DE DATOS PASARON'
