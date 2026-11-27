@@ -168,5 +168,23 @@ exception when others then
   raise notice 'ok: Preparé exige ser de la casa';
 end $$;
 
+-- 13. (0005) Preparé otra cosa
+set request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+select id as huevo from items where household_id = :'hh2' and name = 'Huevos' \gset
+select prepare_custom(:'hh2', '2026-11-30', 'cena', 'Calentado', jsonb_build_array(jsonb_build_object('item_id', :'huevo', 'qty', 3)), 'ambos', true) as log5 \gset
+select pg_temp.check((select s.qty from stock s where s.item_id = :'huevo') = 26, 'Preparé otra cosa descuenta sus ingredientes');
+select pg_temp.check((select title from meal_logs where id = :'log5') = 'Calentado', 'la comida queda con su nombre');
+select pg_temp.check((select qty_m + qty_a from recipe_ingredients ri join recipes r on r.id = ri.recipe_id where r.household_id = :'hh2' and r.name = 'Calentado') = 3, 'se puede guardar como receta');
+select undo_meal(:'log5');
+select pg_temp.check((select s.qty from stock s where s.item_id = :'huevo') = 29, 'deshacer otra cosa devuelve lo descontado');
+do $$ begin
+  perform prepare_custom((select household_id from items where name = 'Huevos' and household_id <> (select household_id from items where id = (select item_id from recipe_ingredients limit 1)) limit 1),
+                         '2026-11-30', 'cena', 'X', jsonb_build_array(jsonb_build_object('item_id', (select item_id from recipe_ingredients limit 1), 'qty', 1)));
+  raise exception 'FALLA: aceptó un artículo de otra casa';
+exception when others then
+  if sqlerrm like 'FALLA%' then raise; end if;
+  raise notice 'ok: no acepta artículos de otra casa';
+end $$;
+
 reset role;
 \echo 'TODAS LAS PRUEBAS DE BASE DE DATOS PASARON'

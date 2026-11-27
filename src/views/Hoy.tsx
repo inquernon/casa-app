@@ -2,8 +2,8 @@ import { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useData } from "../lib/store";
 import { cycleDay, cycleLabel, recipeFor, shortages, type Shortage } from "../lib/menu";
-import { MEALS, type Meal, type MealLog, type Recipe, type Who } from "../lib/types";
-import { addDays, errorText, fmtQty, todayCO } from "../lib/util";
+import { MEALS, groupIndex, type Meal, type MealLog, type Recipe, type Who } from "../lib/types";
+import { addDays, errorText, fmtQty, parseQty, todayCO } from "../lib/util";
 import { Sheet } from "../components/Sheet";
 
 const WHO_LABEL: Record<Who, string> = { ambos: "los dos", mariana: "Mariana", alex: "Alex" };
@@ -15,6 +15,7 @@ export function Hoy({ onError }: { onError: (m: string) => void }) {
   const today = todayCO();
   const [date, setDate] = useState(today);
   const [prep, setPrep] = useState<{ meal: Meal; recipe: Recipe } | null>(null);
+  const [other, setOther] = useState<Meal | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
   if (!plan.length) {
@@ -82,7 +83,14 @@ export function Hoy({ onError }: { onError: (m: string) => void }) {
               <h3>{m.label}{r.minutes ? ` · ${r.minutes} min` : ""}</h3>
               {log ? <span className="pill">Preparado · {WHO_LABEL[log.who]}</span> : short.size > 0 && <span className="pill warn">Faltan {short.size}</span>}
             </div>
-            <b>{r.name}</b>
+            {log && log.title && log.title !== r.name ? (
+              <>
+                <b>{log.title}</b>
+                <span className="small muted">En el menú estaba: {r.name}</span>
+              </>
+            ) : (
+              <b>{r.name}</b>
+            )}
             {r.steps && <p className="small muted">{r.steps}</p>}
             <button className="link" onClick={() => setOpen(open === key ? null : key)} aria-expanded={open === key}>
               {open === key ? "Ocultar ingredientes" : `Ingredientes (${ing.length})`}
@@ -109,7 +117,10 @@ export function Hoy({ onError }: { onError: (m: string) => void }) {
               {log ? (
                 <button onClick={() => undo(log)}>Deshacer</button>
               ) : (
-                <button className="primary" onClick={() => setPrep({ meal: m.id, recipe: r })}>Preparé</button>
+                <>
+                  <button className="primary" onClick={() => setPrep({ meal: m.id, recipe: r })}>Preparé</button>
+                  <button onClick={() => setOther(m.id)}>Preparé otra cosa</button>
+                </>
               )}
             </div>
           </div>
@@ -150,6 +161,7 @@ export function Hoy({ onError }: { onError: (m: string) => void }) {
         )}
       </div>
 
+      {other && <OtherSheet meal={other} date={date} onClose={() => setOther(null)} onError={onError} />}
       {prep && (
         <PrepSheet
           meal={prep.meal}
@@ -183,6 +195,100 @@ function PrepSheet({ meal, recipe, date, onClose, onError }: { meal: Meal; recip
         <button disabled={busy} onClick={() => go("alex")}>Solo Alex</button>
       </div>
       <button onClick={onClose}>Cancelar</button>
+    </Sheet>
+  );
+}
+
+const WHO_BUTTONS: { id: Who; label: string }[] = [
+  { id: "ambos", label: "Los dos" },
+  { id: "mariana", label: "Mariana" },
+  { id: "alex", label: "Alex" },
+];
+
+/** Cuando no se siguió el menú: otra receta guardada, o algo nuevo con sus ingredientes. */
+function OtherSheet({ meal, date, onClose, onError }: { meal: Meal; date: string; onClose: () => void; onError: (m: string) => void }) {
+  const { household, recipes, items, refresh } = useData();
+  const [mode, setMode] = useState<"receta" | "nueva">("receta");
+  const [who, setWho] = useState<Who>("ambos");
+  const [recipeId, setRecipeId] = useState("");
+  const [title, setTitle] = useState("");
+  const [rows, setRows] = useState<{ item_id: string; qty: string }[]>([{ item_id: "", qty: "" }]);
+  const [save, setSave] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const food = items
+    .filter((i) => i.active && !["Aseo", "Mascotas"].includes(i.grp))
+    .sort((a, b) => groupIndex(a.grp) - groupIndex(b.grp) || a.name.localeCompare(b.name));
+  const groups = [...new Set(food.map((i) => i.grp))];
+  const sorted = [...recipes].filter((r) => r.meal !== "tanda").sort((a, b) => a.name.localeCompare(b.name));
+  const valid = rows.filter((r) => r.item_id && parseQty(r.qty) > 0);
+  const ready = mode === "receta" ? !!recipeId : title.trim() !== "" && valid.length > 0 && valid.length === rows.filter((r) => r.item_id || r.qty).length;
+
+  const setRow = (i: number, patch: Partial<{ item_id: string; qty: string }>) =>
+    setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+
+  const submit = async () => {
+    setBusy(true);
+    const { error } = mode === "receta"
+      ? await supabase.rpc("prepare_meal", { p_household: household.id, p_date: date, p_meal: meal, p_recipe: recipeId, p_who: who })
+      : await supabase.rpc("prepare_custom", {
+          p_household: household.id, p_date: date, p_meal: meal, p_title: title.trim(),
+          p_items: valid.map((r) => ({ item_id: r.item_id, qty: parseQty(r.qty) })), p_who: who, p_save: save,
+        });
+    setBusy(false);
+    if (error) return onError(errorText(error));
+    await refresh();
+    onClose();
+  };
+
+  return (
+    <Sheet title="Preparé otra cosa" onClose={onClose}>
+      <div className="seg" role="group" aria-label="Qué se preparó">
+        <button aria-pressed={mode === "receta"} onClick={() => setMode("receta")}>Otra receta</button>
+        <button aria-pressed={mode === "nueva"} onClick={() => setMode("nueva")}>Algo nuevo</button>
+      </div>
+
+      {mode === "receta" ? (
+        <label>Receta
+          <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)}>
+            <option value="">Elegir…</option>
+            {sorted.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </select>
+        </label>
+      ) : (
+        <>
+          <label>Qué preparaste<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ej.: calentado de fríjoles" /></label>
+          <p className="small muted">Ingredientes en total para quienes comieron.</p>
+          {rows.map((r, i) => {
+            const it = items.find((x) => x.id === r.item_id);
+            return (
+              <div className="ingrow" key={i}>
+                <select value={r.item_id} onChange={(e) => setRow(i, { item_id: e.target.value })} aria-label={`Ingrediente ${i + 1}`}>
+                  <option value="">Ingrediente…</option>
+                  {groups.map((g) => (
+                    <optgroup key={g} label={g}>
+                      {food.filter((x) => x.grp === g).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+                <input inputMode="decimal" value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} placeholder="0" aria-label={`Cantidad ${i + 1}`} />
+                <span className="small muted">{it ? (it.unit === "unidad" ? "und" : it.unit) : ""}</span>
+                <button className="link" onClick={() => setRows(rows.length > 1 ? rows.filter((_, k) => k !== i) : [{ item_id: "", qty: "" }])} aria-label="Quitar">✕</button>
+              </div>
+            );
+          })}
+          <button onClick={() => setRows([...rows, { item_id: "", qty: "" }])}>Agregar ingrediente</button>
+          <label className="row"><input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} style={{ width: "auto" }} /> Guardar como receta para usarla otra vez</label>
+        </>
+      )}
+
+      <div className="seg" role="group" aria-label="Para quién">
+        {WHO_BUTTONS.map((w) => <button key={w.id} aria-pressed={who === w.id} onClick={() => setWho(w.id)}>{w.label}</button>)}
+      </div>
+      <div className="row spread">
+        <button onClick={onClose}>Cancelar</button>
+        <button className="primary" disabled={busy || !ready} onClick={submit}>Guardar y descontar</button>
+      </div>
     </Sheet>
   );
 }

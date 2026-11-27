@@ -164,6 +164,8 @@ export interface MealLog {
   meal: Meal;
   recipe_id: string | null;
   who: Who;
+  /** Nombre de lo que se preparó (receta del menú u otra cosa) */
+  title: string;
   created_by: string | null;
   created_at: string;
 }
